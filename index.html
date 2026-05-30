@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Vídeos - Google Drive</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-main: #121214;
+            --bg-sidebar: #1a1a1e;
+            --bg-card: #202024;
+            --bg-input: #29292e;
+            --accent: #00b37e;
+            --accent-hover: #00875f;
+            --text-main: #e1e1e6;
+            --text-support: #a9a9b2;
+            --border: #323238;
+            --danger: #f75a68;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- AUTENTICACIÓN APP --- */
+        #auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--bg-main);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .btn-auth {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.2s;
+        }
+
+        .btn-auth:hover { background: var(--accent-hover); }
+
+        /* --- ESTRUCTURA PRINCIPAL --- */
+        #sidebar {
+            width: 300px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease;
+            z-index: 99;
+        }
+
+        #main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        /* --- CABECERA DE LA APP --- */
+        header {
+            background: var(--bg-sidebar);
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        #menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .status-hub {
+            font-size: 13px;
+            color: var(--text-support);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--text-support);
+            border-radius: 50%;
+        }
+
+        .status-dot.sync { background: var(--accent); }
+        .status-dot.saving { background: #e1b12c; animation: pulse 1s infinite; }
+
+        /* --- SECCIONES Y SUBSECCIONES (SIDEBAR) --- */
+        .sidebar-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 14px;
+        }
+
+        .action-box {
+            padding: 0 14px 15px 14px;
+        }
+
+        .btn-add-main {
+            width: 100%;
+            background: var(--bg-input);
+            color: var(--text-main);
+            border: 1px dashed var(--border);
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .section-group {
+            margin-bottom: 16px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 8px;
+            padding: 6px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-support);
+        }
+
+        .subsections-list {
+            margin-top: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .sub-item {
+            padding: 10px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 14px;
+            color: var(--text-support);
+        }
+
+        .sub-item:hover, .sub-item.active {
+            background: var(--bg-input);
+            color: var(--text-main);
+        }
+
+        .sub-item.active { border-left: 3px solid var(--accent); }
+
+        .btn-icon {
+            background: none;
+            border: none;
+            color: var(--text-support);
+            cursor: pointer;
+            opacity: 0.5;
+            display: flex;
+            align-items: center;
+        }
+
+        .btn-icon:hover { opacity: 1; color: var(--text-main); }
+
+        /* --- CONTROL DE VÍDEOS (GRID PRINCIPAL) --- */
+        .view-container {
+            padding: 24px;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .section-title-area {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
+        }
+
+        .video-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .video-thumbnail-placeholder {
+            height: 180px;
+            background: linear-gradient(45deg, #1a1a1e, #29292e);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--accent);
+            gap: 8px;
+            position: relative;
+        }
+
+        .video-thumbnail-placeholder span.play-icon {
+            font-size: 48px;
+        }
+
+        .card-body {
+            padding: 16px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .card-desc {
+            font-size: 14px;
+            color: var(--text-support);
+            background: var(--bg-input);
+            padding: 10px;
+            border-radius: 6px;
+            min-height: 60px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            white-space: pre-wrap;
+        }
+
+        .card-desc:hover {
+            border-color: var(--border);
+        }
+
+        .card-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: auto;
+        }
+
+        /* --- MODALES / REPRODUCTOR --- */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            width: 100%;
+            max-width: 800px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .modal-header {
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .iframe-wrapper {
+            position: relative;
+            padding-bottom: 56.25%; /* Aspect Ratio 16:9 */
+            height: 0;
+        }
+
+        .iframe-wrapper iframe {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            border: none;
+        }
+
+        /* --- COMPORTAMIENTO FORMULARIOS --- */
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            color: var(--text-support);
+        }
+        .form-control {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .modal-footer {
+            padding: 16px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* --- RESPONSIVE DESIGN (MOBILE-FIRST PARA ANDROID) --- */
+        @media (max-width: 768px) {
+            #menu-toggle { display: block; }
+            #sidebar {
+                position: fixed;
+                left: 0; top: 0; bottom: 0;
+                transform: translateX(-100%);
+            }
+            #sidebar.open {
+                transform: translateX(0);
+            }
+            .sidebar-overlay {
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 98;
+                display: none;
+            }
+            .sidebar-overlay.open { display: block; }
+            .video-grid { grid-template-columns: 1fr; }
+            .view-container { padding: 16px; }
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="auth-overlay">
+        <h2>Gestor de Entrenamientos Privado</h2>
+        <p style="color: var(--text-support)">Sincronizado de forma segura con tu Google Drive</p>
+        <button class="btn-auth" id="btn-login" onclick="handleAuthClick()">
+            <span class="material-icons-round">cloud_sync</span> Conectar con Google Drive
+        </button>
+    </div>
+
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleMobileMenu()"></div>
+
+    <aside id="sidebar">
+        <div style="padding: 24px 20px 10px 20px; font-weight: 700; font-size: 18px; display: flex; align-items: center; gap: 10px;">
+            <span class="material-icons-round" style="color: var(--accent)">fitness_center</span> Mi Panel
+        </div>
+        
+        <div class="action-box">
+            <button class="btn-add-main" onclick="promptAddSection()">
+                <span class="material-icons-round">add</span> Nueva Sección
+            </button>
+        </div>
+
+        <div class="sidebar-scroll" id="tree-container">
+            </div>
+    </aside>
+
+    <main id="main-content">
+        <header>
+            <div class="header-left">
+                <button id="menu-toggle" onclick="toggleMobileMenu()">
+                    <span class="material-icons-round">menu</span>
+                </button>
+                <h3 id="current-sub-title">Selecciona una categoría</h3>
+            </div>
+            <div class="status-hub">
+                <div class="status-dot id-status" id="sync-dot"></div>
+                <span id="sync-text">Desconectado</span>
+            </div>
+        </header>
+
+        <div class="view-container">
+            <div class="section-title-area" id="title-area" style="display: none;">
+                <p style="color: var(--text-support)">Vídeos asignados a este bloque</p>
+                <button class="btn-auth" style="padding: 8px 16px; font-size: 14px;" onclick="openAddVideoModal()">
+                    <span class="material-icons-round">video_call</span> Añadir Vídeo
+                </button>
+            </div>
+
+            <div class="video-grid" id="video-grid">
+                </div>
+        </div>
+    </main>
+
+    <div class="modal" id="player-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 id="player-title">Reproductor</h4>
+                <button class="btn-icon" onclick="closePlayer()"><span class="material-icons-round">close</span></button>
+            </div>
+            <div class="iframe-wrapper">
+                <iframe id="video-iframe" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="form-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h4>Nuevo Vídeo</h4>
+                <button class="btn-icon" onclick="closeFormModal()"><span class="material-icons-round">close</span></button>
+            </div>
+            <div style="padding: 20px;">
+                <div class="form-group">
+                    <label>Título</label>
+                    <input type="text" id="v-title" class="form-control" placeholder="Ej. Sentadilla isométrica 90°">
+                </div>
+                <div class="form-group">
+                    <label>Enlace Compartir Google Drive</label>
+                    <input type="text" id="v-url" class="form-control" placeholder="https://drive.google.com/file/d/.../view">
+                </div>
+                <div class="form-group">
+                    <label>Descripción inicial</label>
+                    <textarea id="v-desc" class="form-control" rows="3" placeholder="Detalles o pautas del ejercicio..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="form-control" style="width: auto; background: transparent;" onclick="closeFormModal()">Cancelar</button>
+                <button class="btn-auth" style="padding: 10px 20px; font-size: 14px;" onclick="saveNewVideoSubmit()">Guardar Vídeo</button>
+            </div>
+        </div>
+    </div>
+
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+
+    <script>
+        // CONFIGURACIÓN DE CREDENCIALES COMPILADA
+        const CLIENT_ID = '253413266265-6u3qd7u8crqcfl66ko76rc8gjtq96c7m.apps.googleusercontent.com';
+        const API_KEY = 'AIzaSyAiy0piQ2iZeCOjR75-D6CMr7QIq72Nbjw';
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+        const FILE_NAME = 'config_videos_app.json';
+
+        let gapiInited = false;
+        let gisInited = false;
+        let tokenClient;
+        let fileId = null;
+
+        // Estructura de Datos Base de la Aplicación
+        let db = {
+            secciones: {}
+        };
+
+        let currentSectionId = null;
+        let currentSubSectionId = null;
+
+        /* --- CONTROL DE INICIALIZACIÓN DE GOOGLE APIS --- */
+        function gapiLoaded() { gapi.load('client', initializeGapiClient); }
+        async function initializeGapiClient() {
+            await gapi.client.init({ apiKey: API_KEY, discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
+            gapiInited = true;
+            checkAuthLifecycle();
+        }
+        function gisLoaded() {
+            tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: '' });
+            gisInited = true;
+            checkAuthLifecycle();
+        }
+        function checkAuthLifecycle() {
+            if (gapiInited && gisInited) {
+                // Si ya había token previo guardado en memoria de sesión, refrescar
+                const token = gapi.client.getToken();
+                if (token !== null) { document.getElementById('auth-overlay').style.display = 'none'; startApp(); }
+            }
+        }
+
+        function handleAuthClick() {
+            tokenClient.callback = async (resp) => {
+                if (resp.error !== undefined) { throw (resp); }
+                document.getElementById('auth-overlay').style.display = 'none';
+                setSyncStatus('saving', 'Conectando...');
+                await startApp();
+            };
+            if (gapi.client.getToken() === null) { tokenClient.requestAccessToken({prompt: 'consent'}); }
+            else { tokenClient.requestAccessToken({prompt: ''}); }
+        }
+
+        /* --- CONEXIÓN Y PERSISTENCIA CON DRIVE API --- */
+        async function startApp() {
+            try {
+                setSyncStatus('saving', 'Buscando base de datos...');
+                const response = await gapi.client.drive.files.list({ q: `name = '${FILE_NAME}' and trashed = false`, fields: 'files(id, name)' });
+                const files = response.result.files;
+                
+                if (files.length > 0) {
+                    fileId = files[0].id;
+                    await loadDataFromDrive();
+                } else {
+                    await createInitialDriveFile();
+                }
+                setSyncStatus('sync', 'Sincronizado con Drive');
+                renderTree();
+            } catch (err) {
+                console.error(err);
+                setSyncStatus('none', 'Error de conexión');
+            }
+        }
+
+        async function loadDataFromDrive() {
+            const response = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
+            db = response.result;
+            if (!db.secciones) db = { secciones: {} }; // Resguardo estructural
+        }
+
+        async function createInitialDriveFile() {
+            // Estructura de ejemplo por defecto solicitada
+            db = {
+                secciones: {
+                    "sec_1": {
+                        titulo: "Pierna",
+                        subsecciones: {
+                            "sub_1": { titulo: "Glúteos", videos: [] },
+                            "sub_2": { titulo: "Movilidad Rodillas", videos: [] }
+                        }
+                    },
+                    "sec_2": {
+                        titulo: "Espalda",
+                        subsecciones: {
+                            "sub_3": { titulo: "Dolor Lumbar", videos: [] }
+                        }
+                    }
+                }
+            };
+            await saveDataToDrive();
+        }
+
+        async function saveDataToDrive() {
+            if (!fileId) {
+                // Crear si no existía de un paso previo defectuoso
+                const metadata = { name: FILE_NAME, mimeType: 'application/json' };
+                const resp = await gapi.client.drive.files.create({ resource: metadata, fields: 'id' });
+                fileId = resp.result.id;
+            }
+            setSyncStatus('saving', 'Sincronizando...');
+            
+            // Subida simplificada via PUT sobre el Media Endpoint
+            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${gapi.client.getToken().access_token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(db)
+            });
+            setSyncStatus('sync', 'Sincronizado con Drive');
+        }
+
+        function setSyncStatus(type, text) {
+            const dot = document.getElementById('sync-dot');
+            const txt = document.getElementById('sync-text');
+            dot.className = 'status-dot ' + type;
+            txt.innerText = text;
+        }
+
+        /* --- LÓGICA DE INTERFAZ Y RENDERIZADO DE ÁRBOL --- */
+        function renderTree() {
+            const container = document.getElementById('tree-container');
+            container.innerHTML = '';
+
+            for (const secId in db.secciones) {
+                const seccion = db.secciones[secId];
+                
+                const group = document.createElement('div');
+                group.className = 'section-group';
+
+                const header = document.createElement('div');
+                header.className = 'section-header';
+                header.innerHTML = `
+                    <span>${escapeHTML(seccion.titulo)}</span>
+                    <button class="btn-icon" onclick="promptAddSubSection('${secId}')"><span class="material-icons-round" style="font-size:18px;">add</span></button>
+                `;
+                group.appendChild(header);
+
+                const subsList = document.createElement('div');
+                subsList.className = 'subsections-list';
+
+                for (const subId in seccion.subsecciones) {
+                    const sub = seccion.subsecciones[subId];
+                    const activeClass = (currentSectionId === secId && currentSubSectionId === subId) ? 'active' : '';
+                    
+                    const item = document.createElement('div');
+                    item.className = `sub-item ${activeClass}`;
+                    item.onclick = () => selectSubSection(secId, subId);
+                    item.innerHTML = `
+                        <span>${escapeHTML(sub.titulo)}</span>
+                        <span class="material-icons-round" style="font-size:16px;">chevron_right</span>
+                    `;
+                    subsList.appendChild(item);
+                }
+
+                group.appendChild(subsList);
+                container.appendChild(group);
+            }
+        }
+
+        function selectSubSection(secId, subId) {
+            currentSectionId = secId;
+            currentSubSectionId = subId;
+            
+            // Cerrar menú móvil si se selecciona sección en pantallas pequeñas
+            if (window.innerWidth <= 768) toggleMobileMenu();
+
+            renderTree();
+            
+            const sub = db.secciones[secId].subsecciones[subId];
+            document.getElementById('current-sub-title').innerText = sub.titulo;
+            document.getElementById('title-area').style.display = 'flex';
+            
+            renderVideos();
+        }
+
+        function renderVideos() {
+            const grid = document.getElementById('video-grid');
+            grid.innerHTML = '';
+            
+            if (!currentSectionId || !currentSubSectionId) return;
+            const videos = db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos || [];
+
+            if (videos.length === 0) {
+                grid.innerHTML = `<p style="color: var(--text-support); grid-column: 1/-1; text-align: center; padding: 40px 0;">No hay vídeos en esta subsección aún.</p>`;
+                return;
+            }
+
+            videos.forEach((video, index) => {
+                const card = document.createElement('div');
+                card.className = 'video-card';
+                card.innerHTML = `
+                    <div class="video-thumbnail-placeholder" onclick="playVideo('${video.url}')">
+                        <span class="material-icons-round play-icon">play_circle_filled</span>
+                        <span style="font-size: 13px; opacity: 0.8;">Reproducir vídeo</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">${escapeHTML(video.titulo)}</div>
+                        <div class="card-desc" onclick="editDescription(${index})">${video.descripcion ? escapeHTML(video.descripcion) : '<em>Sin descripción. Haz clic para editar...</em>'}</div>
+                        <div class="card-actions">
+                            <button class="btn-icon" style="color: var(--danger)" onclick="deleteVideo(${index})">
+                                <span class="material-icons-round">delete</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        /* --- ACCIONES CRUD ESTRUCTURA --- */
+        async function promptAddSection() {
+            const name = prompt("Introduce el nombre de la nueva Sección principal:");
+            if (!name) return;
+            const id = 'sec_' + Date.now();
+            db.secciones[id] = { titulo: name, subsecciones: {} };
+            renderTree();
+            await saveDataToDrive();
+        }
+
+        async function promptAddSubSection(secId) {
+            const name = prompt("Introduce el nombre de la subsección:");
+            if (!name) return;
+            const id = 'sub_' + Date.now();
+            db.secciones[secId].subsecciones[id] = { titulo: name, videos: [] };
+            renderTree();
+            await saveDataToDrive();
+        }
+
+        function openAddVideoModal() {
+            document.getElementById('v-title').value = '';
+            document.getElementById('v-url').value = '';
+            document.getElementById('v-desc').value = '';
+            document.getElementById('form-modal').style.display = 'flex';
+        }
+
+        function closeFormModal() { document.getElementById('form-modal').style.display = 'none'; }
+
+        async function saveNewVideoSubmit() {
+            const titulo = document.getElementById('v-title').value.trim();
+            const url = document.getElementById('v-url').value.trim();
+            const descripcion = document.getElementById('v-desc').value.trim();
+
+            if (!titulo || !url) { alert("El título y la URL son obligatorios"); return; }
+
+            const videoNode = { titulo, url, descripcion };
+            db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos.push(videoNode);
+            
+            closeFormModal();
+            renderVideos();
+            await saveDataToDrive();
+        }
+
+        async function editDescription(index) {
+            const currentDesc = db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos[index].descripcion || '';
+            const newDesc = prompt("Modifica la descripción del vídeo:", currentDesc);
+            if (newDesc === null) return; // Si cancela
+
+            db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos[index].descripcion = newDesc;
+            renderVideos();
+            await saveDataToDrive();
+        }
+
+        async function deleteVideo(index) {
+            if (!confirm("¿Seguro que quieres eliminar este vídeo?")) return;
+            db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos.splice(index, 1);
+            renderVideos();
+            await saveDataToDrive();
+        }
+
+        /* --- REPRODUCTOR PARSER GOOGLE DRIVE --- */
+        function extractDriveId(url) {
+            // Soporta formatos de enlace standard compartidos, embebidos o directos de vídeo
+            const regExp = /(?:https?:\/\/)?(?:drive\.google\.com\/(?:file\/d\/|open\?id=)|drive\.google\.com\/video\/view\?id=)([^/?#&]+)/;
+            const match = url.match(regExp);
+            return (match && match[1]) ? match[1] : null;
+        }
+
+        function playVideo(url) {
+            const videoId = extractDriveId(url);
+            if (!videoId) {
+                alert("El enlace proporcionado no parece un enlace válido de Google Drive.");
+                return;
+            }
+            // Cambiamos al endpoint /preview que está optimizado para iframe embebido nativo
+            const previewUrl = `https://drive.google.com/file/d/${videoId}/preview`;
+            document.getElementById('video-iframe').src = previewUrl;
+            document.getElementById('player-modal').style.display = 'flex';
+        }
+
+        function closePlayer() {
+            document.getElementById('player-modal').style.display = 'none';
+            document.getElementById('video-iframe').src = ''; // Corta el audio/reproducción de fondo
+        }
+
+        /* --- RESPONSIVE ACTIONS MOBILE --- */
+        function toggleMobileMenu() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('open');
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            );
+        }
+    </script>
+</body>
+</html>
