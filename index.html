@@ -399,7 +399,7 @@
 
     <div id="auth-overlay">
         <h2>Gestor de Entrenamientos Privado</h2>
-        <p style="color: var(--text-support)">Sincronizado de forma segura con tu Google Drive</p>
+        <p style="color: var(--text-support); margin-bottom: 10px;">Sincronizado de forma segura con tu Google Drive</p>
         <button class="btn-auth" id="btn-login" onclick="handleAuthClick()">
             <span class="material-icons-round">cloud_sync</span> Conectar con Google Drive
         </button>
@@ -492,60 +492,56 @@
     <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
 
     <script>
-        // CONFIGURACIÓN DE CREDENCIALES COMPILADA
         const CLIENT_ID = '253413266265-6u3qd7u8crqcfl66ko76rc8gjtq96c7m.apps.googleusercontent.com';
         const API_KEY = 'AIzaSyAiy0piQ2iZeCOjR75-D6CMr7QIq72Nbjw';
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
         const FILE_NAME = 'config_videos_app.json';
 
         let gapiInited = false;
-        let gisInited = false;
+        let gisinited = false;
         let tokenClient;
         let fileId = null;
 
-        // Estructura de Datos Base de la Aplicación
-        let db = {
-            secciones: {}
-        };
-
+        let db = { secciones: {} };
         let currentSectionId = null;
         let currentSubSectionId = null;
 
-        /* --- CONTROL DE INICIALIZACIÓN DE GOOGLE APIS --- */
         function gapiLoaded() { gapi.load('client', initializeGapiClient); }
         async function initializeGapiClient() {
             await gapi.client.init({ apiKey: API_KEY, discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
             gapiInited = true;
-            checkAuthLifecycle();
+            checkInitialState();
         }
+        
         function gisLoaded() {
-            tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: '' });
-            gisInited = true;
-            checkAuthLifecycle();
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (resp) => {
+                    if (resp.error !== undefined) { throw (resp); }
+                    document.getElementById('auth-overlay').style.display = 'none';
+                    startApp();
+                }
+            });
+            gisinited = true;
+            checkInitialState();
         }
-        function checkAuthLifecycle() {
-            if (gapiInited && gisInited) {
-                // Si ya había token previo guardado en memoria de sesión, refrescar
-                const token = gapi.client.getToken();
-                if (token !== null) { document.getElementById('auth-overlay').style.display = 'none'; startApp(); }
+
+        function checkInitialState() {
+            if (gapiInited && gisinited) {
+                // Estado listo, esperando acción explícita del usuario
+                console.log("APIs de Google cargadas correctamente.");
             }
         }
 
         function handleAuthClick() {
-            tokenClient.callback = async (resp) => {
-                if (resp.error !== undefined) { throw (resp); }
-                document.getElementById('auth-overlay').style.display = 'none';
-                setSyncStatus('saving', 'Conectando...');
-                await startApp();
-            };
-            if (gapi.client.getToken() === null) { tokenClient.requestAccessToken({prompt: 'consent'}); }
-            else { tokenClient.requestAccessToken({prompt: ''}); }
+            // Forzar el popup de login explícito para saltarse bloqueos automáticos de cookies de terceros
+            tokenClient.requestAccessToken({prompt: 'consent'});
         }
 
-        /* --- CONEXIÓN Y PERSISTENCIA CON DRIVE API --- */
         async function startApp() {
             try {
-                setSyncStatus('saving', 'Buscando base de datos...');
+                setSyncStatus('saving', 'Conectando con tu Drive...');
                 const response = await gapi.client.drive.files.list({ q: `name = '${FILE_NAME}' and trashed = false`, fields: 'files(id, name)' });
                 const files = response.result.files;
                 
@@ -555,22 +551,21 @@
                 } else {
                     await createInitialDriveFile();
                 }
-                setSyncStatus('sync', 'Sincronizado con Drive');
+                setSyncStatus('sync', 'Sincronizado');
                 renderTree();
             } catch (err) {
                 console.error(err);
-                setSyncStatus('none', 'Error de conexión');
+                setSyncStatus('none', 'Error de sincronización');
             }
         }
 
         async function loadDataFromDrive() {
             const response = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
             db = response.result;
-            if (!db.secciones) db = { secciones: {} }; // Resguardo estructural
+            if (!db || !db.secciones) db = { secciones: {} };
         }
 
         async function createInitialDriveFile() {
-            // Estructura de ejemplo por defecto solicitada
             db = {
                 secciones: {
                     "sec_1": {
@@ -592,15 +587,13 @@
         }
 
         async function saveDataToDrive() {
+            setSyncStatus('saving', 'Guardando en Drive...');
             if (!fileId) {
-                // Crear si no existía de un paso previo defectuoso
                 const metadata = { name: FILE_NAME, mimeType: 'application/json' };
                 const resp = await gapi.client.drive.files.create({ resource: metadata, fields: 'id' });
                 fileId = resp.result.id;
             }
-            setSyncStatus('saving', 'Sincronizando...');
             
-            // Subida simplificada via PUT sobre el Media Endpoint
             await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
                 method: 'PATCH',
                 headers: {
@@ -609,24 +602,24 @@
                 },
                 body: JSON.stringify(db)
             });
-            setSyncStatus('sync', 'Sincronizado con Drive');
+            setSyncStatus('sync', 'Sincronizado');
         }
 
         function setSyncStatus(type, text) {
             const dot = document.getElementById('sync-dot');
             const txt = document.getElementById('sync-text');
-            dot.className = 'status-dot ' + type;
-            txt.innerText = text;
+            if(dot && txt) {
+                dot.className = 'status-dot ' + type;
+                txt.innerText = text;
+            }
         }
 
-        /* --- LÓGICA DE INTERFAZ Y RENDERIZADO DE ÁRBOL --- */
         function renderTree() {
             const container = document.getElementById('tree-container');
             container.innerHTML = '';
 
             for (const secId in db.secciones) {
                 const seccion = db.secciones[secId];
-                
                 const group = document.createElement('div');
                 group.className = 'section-group';
 
@@ -654,7 +647,6 @@
                     `;
                     subsList.appendChild(item);
                 }
-
                 group.appendChild(subsList);
                 container.appendChild(group);
             }
@@ -663,23 +655,18 @@
         function selectSubSection(secId, subId) {
             currentSectionId = secId;
             currentSubSectionId = subId;
-            
-            // Cerrar menú móvil si se selecciona sección en pantallas pequeñas
             if (window.innerWidth <= 768) toggleMobileMenu();
-
             renderTree();
             
             const sub = db.secciones[secId].subsecciones[subId];
             document.getElementById('current-sub-title').innerText = sub.titulo;
             document.getElementById('title-area').style.display = 'flex';
-            
             renderVideos();
         }
 
         function renderVideos() {
             const grid = document.getElementById('video-grid');
             grid.innerHTML = '';
-            
             if (!currentSectionId || !currentSubSectionId) return;
             const videos = db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos || [];
 
@@ -698,7 +685,7 @@
                     </div>
                     <div class="card-body">
                         <div class="card-title">${escapeHTML(video.titulo)}</div>
-                        <div class="card-desc" onclick="editDescription(${index})">${video.descripcion ? escapeHTML(video.descripcion) : '<em>Sin descripción. Haz clic para editar...</em>'}</div>
+                        <div class="card-desc" onclick="editDescription(${index})">${video.descripcion ? escapeHTML(video.descripcion) : '<em>Sin descripción. Pulsa para editar...</em>'}</div>
                         <div class="card-actions">
                             <button class="btn-icon" style="color: var(--danger)" onclick="deleteVideo(${index})">
                                 <span class="material-icons-round">delete</span>
@@ -710,9 +697,8 @@
             });
         }
 
-        /* --- ACCIONES CRUD ESTRUCTURA --- */
         async function promptAddSection() {
-            const name = prompt("Introduce el nombre de la nueva Sección principal:");
+            const name = prompt("Nombre de la nueva Sección principal:");
             if (!name) return;
             const id = 'sec_' + Date.now();
             db.secciones[id] = { titulo: name, subsecciones: {} };
@@ -721,7 +707,7 @@
         }
 
         async function promptAddSubSection(secId) {
-            const name = prompt("Introduce el nombre de la subsección:");
+            const name = prompt("Nombre de la subsección:");
             if (!name) return;
             const id = 'sub_' + Date.now();
             db.secciones[secId].subsecciones[id] = { titulo: name, videos: [] };
@@ -735,7 +721,6 @@
             document.getElementById('v-desc').value = '';
             document.getElementById('form-modal').style.display = 'flex';
         }
-
         function closeFormModal() { document.getElementById('form-modal').style.display = 'none'; }
 
         async function saveNewVideoSubmit() {
@@ -744,10 +729,11 @@
             const descripcion = document.getElementById('v-desc').value.trim();
 
             if (!titulo || !url) { alert("El título y la URL son obligatorios"); return; }
+            if (!db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos) {
+                db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos = [];
+            }
 
-            const videoNode = { titulo, url, descripcion };
-            db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos.push(videoNode);
-            
+            db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos.push({ titulo, url, descripcion });
             closeFormModal();
             renderVideos();
             await saveDataToDrive();
@@ -756,8 +742,7 @@
         async function editDescription(index) {
             const currentDesc = db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos[index].descripcion || '';
             const newDesc = prompt("Modifica la descripción del vídeo:", currentDesc);
-            if (newDesc === null) return; // Si cancela
-
+            if (newDesc === null) return;
             db.secciones[currentSectionId].subsecciones[currentSubSectionId].videos[index].descripcion = newDesc;
             renderVideos();
             await saveDataToDrive();
@@ -770,9 +755,7 @@
             await saveDataToDrive();
         }
 
-        /* --- REPRODUCTOR PARSER GOOGLE DRIVE --- */
         function extractDriveId(url) {
-            // Soporta formatos de enlace standard compartidos, embebidos o directos de vídeo
             const regExp = /(?:https?:\/\/)?(?:drive\.google\.com\/(?:file\/d\/|open\?id=)|drive\.google\.com\/video\/view\?id=)([^/?#&]+)/;
             const match = url.match(regExp);
             return (match && match[1]) ? match[1] : null;
@@ -780,33 +763,23 @@
 
         function playVideo(url) {
             const videoId = extractDriveId(url);
-            if (!videoId) {
-                alert("El enlace proporcionado no parece un enlace válido de Google Drive.");
-                return;
-            }
-            // Cambiamos al endpoint /preview que está optimizado para iframe embebido nativo
-            const previewUrl = `https://drive.google.com/file/d/${videoId}/preview`;
-            document.getElementById('video-iframe').src = previewUrl;
+            if (!videoId) { alert("El enlace no es una URL válida de compartir de Google Drive."); return; }
+            document.getElementById('video-iframe').src = `https://drive.google.com/file/d/${videoId}/preview`;
             document.getElementById('player-modal').style.display = 'flex';
         }
 
         function closePlayer() {
             document.getElementById('player-modal').style.display = 'none';
-            document.getElementById('video-iframe').src = ''; // Corta el audio/reproducción de fondo
+            document.getElementById('video-iframe').src = '';
         }
 
-        /* --- RESPONSIVE ACTIONS MOBILE --- */
         function toggleMobileMenu() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebar-overlay');
-            sidebar.classList.toggle('open');
-            overlay.classList.toggle('open');
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('sidebar-overlay').classList.toggle('open');
         }
 
         function escapeHTML(str) {
-            return str.replace(/[&<>'"]/g, 
-                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
-            );
+            return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
         }
     </script>
 </body>
